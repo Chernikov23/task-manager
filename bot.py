@@ -1,27 +1,28 @@
 import asyncio
-import logging
-import sys
-
 from aiogram import Bot, Dispatcher
-from db import init_db
-from handlers import register_handlers
-from scheduler import start_scheduler
+import logging
+import handlers
+from aiogram.client.default import DefaultBotProperties
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-TOKEN = os.getenv('BOT_TOKEN')
 
-async def main():
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    bot = Bot(token=TOKEN)
-    dp = Dispatcher()
+TOKEN = os.getenv("BOT_TOKEN")
+bot = Bot(TOKEN, default=DefaultBotProperties(parse_mode="MarkDown"))
+dp = Dispatcher() 
 
-    register_handlers(dp)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    await init_db()
-    asyncio.create_task(start_scheduler())
+logger.info("Бот запущен и работает...")
+
+async def main():  
+    
+    dp.include_routers(
+        handlers.rt
+    )
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

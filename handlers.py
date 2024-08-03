@@ -1,60 +1,81 @@
-from aiogram import Dispatcher
+from aiogram import F, Bot, Router
 from aiogram.types import Message
-from aiogram.filters import Command
-from db import add_task, delete_task, list_tasks
-from datetime import datetime, timedelta
+from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from db import *
+from keyboards import *
 
-REMIND_OPTIONS = {
-    "5m": timedelta(minutes=5),
-    "15m": timedelta(minutes=15),
-    "30m": timedelta(minutes=30),
-    "1h": timedelta(hours=1),
-    "2h": timedelta(hours=2),
-    "1d": timedelta(days=1),
-    "2d": timedelta(days=2),
-    "1w": timedelta(weeks=1),
-    "1M": timedelta(days=30)
+
+rt = Router()
+
+times = {
+    "Месяц": 43200,
+    "Неделя": 10080,
+    "2 дня": 2880,
+    "1 день": 1440,
+    "2 часа": 120,
+    "1 час": 60,
+    "30 минут": 30,
+    "15 минут": 15,
+    "10 минут": 10,
+    "В момент события": 0
 }
 
-async def start_handler(message: Message):
-    await message.answer("Привет! Я менеджер задач. Используй команды /add, /delete и /list для управления задачами. Добавляй дедлайны в формате ДД-ММ ЧЧ:ММ и напоминания в виде: 5m, 15m, 30m, 1h, 2h, 1d, 2d, 1w, 1M.")
 
-async def add_handler(message: Message):
-    parts = message.text[len("/add "):].split(" ", 2)
-    if len(parts) >= 2:
-        task = parts[0]
-        deadline_str = parts[1]
-        remind_before = parts[2] if len(parts) == 3 else None
+class Task(StatesGroup):
+    name = State()
+    description = State()
+    deadline = State()
+    reminder = State()
 
-        try:
-            deadline = datetime.strptime(deadline_str, "%d-%m %H:%M")
-            await add_task(message.from_user.id, task, deadline, remind_before)
-            await message.answer(f"Задача '{task}' добавлена с дедлайном {deadline_str}.")
-        except ValueError:
-            await message.answer("Неверный формат даты. Используй ДД-ММ ЧЧ:ММ.")
+
+@rt.message(CommandStart())
+async def start(msg: Message):
+    await msg.answer(create_user(msg.from_user.id, msg.from_user.username, msg.from_user.language_code), reply_markup=main)
+    
+@rt.message(F.text == '🆕 Создать задачу')
+async def start_creating_task(msg: Message, state: FSMContext):
+    await msg.answer("Введите название задачи:")
+    await state.set_state(Task.name)
+    
+@rt.message(Task.name)
+async def set_name(msg: Message, state: FSMContext):
+    name = msg.text
+    await state.update_data(name=name)
+    await msg.answer("Введите описание задачи:")
+    await state.set_state(Task.description)
+    
+@rt.message(Task.description)
+async def process_task_description(msg: Message, state: FSMContext):
+    description = msg.text
+    await state.update_data(description=description)
+    await msg.answer("Введите дедлайн в формате ДД.ММ.ГГ ЧЧ:ММ:")
+    await state.set_state(Task.deadline)
+
+@rt.message(Task.deadline)
+async def process_task_deadline(msg: Message, state: FSMContext):
+    deadline = msg.text
+    await state.update_data(deadline=deadline)
+    await msg.answer("Введите время напоминания в минутах до дедлайна:")
+    await state.set_state(Task.reminder)
+
+@rt.message(Task.reminder)
+async def process_task_reminder(msg: Message, state: FSMContext):
+    reminder = int(msg.text)
+    user_data = await state.get_data()
+    description = user_data['description']
+    deadline = user_data['deadline']
+    name = user_data['name']
+    response = create_task(msg.from_user.id, name, description, deadline, reminder)
+    await msg.answer(response)
+    await state.clear()
+    
+@rt.message(F.text == '📋 Мои задачи')
+async def view_tasks_handler(msg: Message):
+    tasks = get_tasks(msg.from_user.id)
+    if not tasks:
+        await msg.answer("У вас нет задач.")
     else:
-        await message.answer("Пожалуйста, укажи задачу и дедлайн в формате /add задача ДД-ММ ЧЧ:ММ напоминание (опционально).")
-
-async def delete_handler(message: Message):
-    try:
-        task_id = int(message.text[len("/delete "):])
-        await delete_task(task_id)
-        await message.answer(f"Задача с ID {task_id} удалена.")
-    except ValueError:
-        await message.answer("Пожалуйста, укажи корректный ID задачи после команды /delete.")
-    except Exception as e:
-        await message.answer(f"Произошла ошибка: {str(e)}")
-
-async def list_handler(message: Message):
-    tasks = await list_tasks(message.from_user.id)
-    if tasks:
-        tasks_list = "\n".join([f"{task_id}: {task} (Дедлайн: {deadline}, Напоминание: {remind_before})" for task_id, task, deadline, remind_before in tasks])
-        await message.answer(f"Твои задачи:\n{tasks_list}")
-    else:
-        await message.answer("У тебя нет задач.")
-
-def register_handlers(dp: Dispatcher):
-    dp.message.register(start_handler, Command('start'))
-    dp.message.register(add_handler, Command('add'))
-    dp.message.register(delete_handler, Command('delete'))
-    dp.message.register(list_handler, Command('list'))
+        tasks_list = "\n".join([f"Task name: {task[0]}\nDescription: {task[2]}\nStatus: {task[3]}\nDeadline: {task[4]}\nReminder: {task[5]} minutes before\n\n" for task in tasks])
+        await msg.answer(f"Ваши задачи:\n{tasks_list}")
