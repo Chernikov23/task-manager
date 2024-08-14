@@ -4,6 +4,8 @@ import logging
 import handlers
 from aiogram.client.default import DefaultBotProperties
 from dotenv import load_dotenv
+from tortoise import Tortoise, run_async
+from config import TORTOISE_ORM
 import os
 
 load_dotenv()
@@ -18,12 +20,20 @@ logger = logging.getLogger(__name__)
 
 logger.info("Бот запущен и работает...")
 
+async def on_startup():
+    await Tortoise.init(config=TORTOISE_ORM)
+    await Tortoise.generate_schemas()
+
+async def on_shutdown():
+    await Tortoise.close_connections()
+
 async def main():  
-    
+    await on_startup()
     dp.include_routers(
         handlers.rt
     )
     await dp.start_polling(bot)
+    await on_shutdown()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_async(main())
