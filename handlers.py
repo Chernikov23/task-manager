@@ -4,15 +4,14 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from models import User
-from keyboards import *
+import keyboards
 from bot import bot
+from config import PORT, HOST, PASSWORD, DATABASE_NAME, USER, PASSWORD_BROADCAST
 import asyncpg
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
-
-PASSWORD_BROADCAST = os.getenv('PASSWORD')
 
 rt = Router()
 
@@ -39,13 +38,7 @@ class Task(StatesGroup):
 class Form(StatesGroup):
     message = State()
     password = State()
-    
-    
-DATABASE_NAME = "users"
-USER = "chernikov"
-PASSWORD = "sasha289"
-HOST = "localhost"
-PORT = "5432"
+
 
 async def clear_table():
     conn = None
@@ -56,11 +49,6 @@ async def clear_table():
         if conn:
             await conn.close()
 
-@rt.message(Command('cleardb'))
-async def clear_db(msg: Message):
-    await clear_table()
-    await msg.answer(f"Все данные из таблицы 'users' были успешно удалены.")
-
 
 @rt.message(CommandStart())
 async def start(msg: Message):
@@ -69,9 +57,9 @@ async def start(msg: Message):
     user = await User.get_or_none(tg_id=tg_id)
     if not user:
         user = await User.create(tg_id=tg_id, name=name)
-        await msg.answer(f"Привет, {name}! Ты успешно зарегистрирован.")
+        await msg.answer(f"Привет, {name}! Ты успешно зарегистрирован.", reply_markup=keyboards.main)
     else:
-        await msg.answer(f"Привет снова, {name}!")
+        await msg.answer(f"Привет снова, {name}!", reply_markup=keyboards.main)
         
     
 @rt.message(Command('broadcast'))
@@ -105,3 +93,11 @@ async def start_mailing(msg: Message, state: FSMContext):
     await state.clear()
     await send_notifications_to_all_users(msg.text)
     await msg.answer('Рассылка окончена')
+    
+    
+@rt.message(F.text == 'ℹ️ О боте')
+async def about(msg: Message):
+    await msg.answer(
+        'Данный бот призван стать помощником в организации рабочих процессов\n\nПомимо создания задач, вы можете создавать организации, добавлять туда людей и назначать для них задачи!'
+    )
+

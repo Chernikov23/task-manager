@@ -3,15 +3,11 @@ from aiogram import Bot, Dispatcher
 import logging
 import handlers
 from aiogram.client.default import DefaultBotProperties
-from dotenv import load_dotenv
 from tortoise import Tortoise, run_async
-from config import TORTOISE_ORM
-import os
-
-load_dotenv()
+from config import TORTOISE_ORM, TOKEN
 
 
-TOKEN = os.getenv("BOT_TOKEN")
+
 bot = Bot(TOKEN, default=DefaultBotProperties(parse_mode="MarkDown"))
 dp = Dispatcher() 
 
